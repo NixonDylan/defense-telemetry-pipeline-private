@@ -4,111 +4,60 @@ An enterprise-grade, high-performance, asynchronous DevSecOps data ingestion pip
 
 ---
 
-## 🏗️ End-to-End Architectural Data Flow
+## 🏗️ Decoupled Architectural Data Flow
 
 ```mermaid
 graph TD
     %% Define System Nodes
-    Edge[Distributed Edge Nodes / Marine Sensor Arrays]
-    Gateway[FastAPI API Gateway Layer]
+    Edge[Edge Nodes / Marine Sensor Arrays]
     Secrets[(GitHub Secrets / Env Memory)]
-    Pool[asyncpg Connection Pool Node]
-    Polars{Polars Vector Filter Mask}
-    DB_Valid[(PostgreSQL: telemetry_ingest)]
-    DB_DLQ[(PostgreSQL: telemetry_dlq)]
+    Gateway[FastAPI API Gateway Ingress]
+    Pydantic{Pydantic v2 Boundary Guard}
+    Redis[(Redis 7 Asynchronous Message Buffer)]
+    Celery[Celery Distributed Worker Array]
+    Polars{Vectorized Polars Sorting Filter}
+    DB_Valid[(PostgreSQL: telemetry_ingest Table)]
+    DB_DLQ[(PostgreSQL: telemetry_dlq Immutable Table)]
     XML[datasets.xml Configuration Map]
     ERDDAP[ERDDAP Server Engine]
     Web[OPeNDAP / Web RESTful Services]
-    Workstation[Hydrographic Workstations / Forecasting Models]
+    Workstation[Hydrographic Workstations / Forecast Models]
 
     %% Define Structural Data Flow
-    Edge -->|1. Transmits Raw Telemetry Payload| Gateway
+    Edge -->|1. Transmits Telemetry Payload| Gateway
     Secrets -->|Injects JWT_SECRET_KEY| Gateway
-    Gateway -->|2. Enforces Token Validation & Pydantic Boundaries| Pool
-    Pool -->|3. Borrows Hot Non-Blocking Connection| Polars
+    
+    Gateway -->|2. Ingests Raw Request| Pydantic
+    Pydantic -->|Invalid Type/Schema| Drop[Log Anomaly & Drop Connection]
+    Pydantic -->|3. Valid Clean Payload| Redis
+    
+    Redis -->|4. Holds Serialized JSON Queue String| Celery
+    Celery -->|5. Assembles Records into DataFrame Matrix Chunks| Polars
     
     %% Spatial Filtering Decisions
-    Polars -->|4a. Valid Coordinates Passed| DB_Valid
-    Polars -->|4b. Out-of-Bounds Coordinates Segregated| DB_DLQ
+    Polars -->|6a. Clean Coordinate Stream via psycopg3 Pool| DB_Valid
+    Polars -->|6b. Out-of-Bounds Spatial Anomaly Registry| DB_DLQ
     
-    %% Downstream Data Processing and Presentation
-    DB_Valid -->|5. Relational Topology Mapping Loop| ERDDAP
+    %% Downstream Presentation
+    DB_Valid -->|7. Relational Topology Mapping Loop| ERDDAP
     XML -->|Injects CF-1.6 Metadata Schema Attributes| ERDDAP
-    ERDDAP -->|6. Generates Standardized NetCDF Matrix Profiles| Web
-    Web -->|7. Streams In-Situ Visual Graphs| Workstation
+    ERDDAP -->|8. Generates Standardized NetCDF Matrix Profiles| Web
+    Web -->|9. Streams In-Situ Visual Dashboard Graphs| Workstation
 
     %% Applied Custom Styling Configurations
     classDef secure fill:#e1f5fe,stroke:#03a9f4,stroke-width:2px,color:#000;
+    classDef queue fill:#fce4ec,stroke:#f06292,stroke-width:2px,color:#000;
     classDef database fill:#efebe9,stroke:#8d6e63,stroke-width:2px,color:#000;
     classDef network fill:#fff3e0,stroke:#ffb74d,stroke-width:2px,color:#000;
     classDef filter fill:#f1f8e9,stroke:#8bc34a,stroke-width:2px,color:#000;
 
     class Gateway,Secrets secure;
-    class DB_Valid,DB_DLQ,Pool database;
+    class Redis,Celery queue;
+    class DB_Valid,DB_DLQ database;
     class Edge,Web,Workstation network;
-    class Polars,XML,ERDDAP filter;
+    class Polars,Pydantic,XML,ERDDAP filter;
 ```
-graph TD
-    %% Component Layer Blocks
-    subgraph Data Producer Layer [1. Local Client Environment]
-        MainScript[main.py]
-        TestE2E[tests/test_e2e_pipeline.py]
-    end
 
-    subgraph Container Networking Layer [2. Containerized Boundary]
-        AppMain[app/main.py]
-        AppConfig[app/config.py]
-        AppDatabase[app/database.py]
-        AppSchemas[app/schemas.py]
-        AppAuth[app/auth.py]
-        CeleryWorker[celery_worker.py]
-    end
-
-    subgraph Enterprise Infrastructure Layer [3. Live Backing Services]
-        RedisStack[(Redis 7 Service Container)]
-        PG_DB[(PostgreSQL 15 Service Container)]
-        InitSQL[init.sql Setup Script]
-        DatasetsXML[datasets.xml Blueprint]
-        ERDDAP_Server[ERDDAP Data Server]
-    end
-
-    %% Software/Module Mappings (Where they live)
-    PydanticEngine[Pydantic v2 Types] -.-> AppSchemas
-    FastAPIApp[FastAPI Framework] -.-> AppMain
-    JoseCrypto[python-jose Auth] -.-> AppAuth
-    AsyncpgDriver[asyncpg Connection Pool] -.-> AppDatabase
-    PsycopgDriver[psycopg3 Bulk-Copy Engine] -.-> CeleryWorker
-    PolarsEngine[Polars DataFrames] -.-> MainScript
-    PolarsEngine -.-> CeleryWorker
-
-    %% Core Dynamic Data Flow
-    TestE2E -->|Triggers Outbound Stream| MainScript
-    MainScript -->|1. HTTP POST Payload With Short-Lived JWT Token| AppMain
-    
-    AppConfig -->|Provides Hardened Environment Variables| AppMain
-    AppMain -->|2. Runs Ingress Authentication Check| AppAuth
-    AppMain -->|3. Validates Payload Schema Metrics| AppSchemas
-    
-    AppMain -->|4. Serializes Clean JSON Task to Buffer| RedisStack
-    RedisStack -->|5. Streams Queue Task Payload| CeleryWorker
-    
-    CeleryWorker -->|6. Assembles Payload Strings Into Matrix Rows| CeleryWorker
-    CeleryWorker -->|7. Executes Non-Blocking Bulk DB Write Checkouts| AppDatabase
-    AppDatabase -->|8. Borrows Async Sockets| PG_DB
-    InitSQL -->|Pre-Initializes telemetry_ingest & telemetry_dlq Tables| PG_DB
-    
-    PG_DB -->|9. Reads Raw Database Relational Cells| ERDDAP_Server
-    DatasetsXML -->|Overlays Strict CF-1.6 Schema Metrics| ERDDAP_Server
-    ERDDAP_Server -->|10. Exposes Standardized OPeNDAP NetCDF Matrices| Workstations[End-User Workstations]
-
-    %% Applied Custom Design Layout Styling
-    classDef files fill:#fff3e0,stroke:#ffb74d,stroke-width:2px,color:#000;
-    classDef backing fill:#efebe9,stroke:#8d6e63,stroke-width:2px,color:#000;
-    classDef software fill:#e1f5fe,stroke:#03a9f4,stroke-width:1px,stroke-dasharray: 5 5,color:#0288d1;
-    
-    class MainScript,TestE2E,AppMain,AppConfig,AppDatabase,AppSchemas,AppAuth,CeleryWorker,InitSQL,DatasetsXML files;
-    class RedisStack,PG_DB,ERDDAP_Server backing;
-    class PydanticEngine,FastAPIApp,JoseCrypto,AsyncpgDriver,PsycopgDriver,PolarsEngine software;
 
 
 ---
