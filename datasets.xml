@@ -1,0 +1,46 @@
+<erddapDatasets>
+    <dataset type="EDDTableFromDatabase" datasetID="cnmoc_buoy_telemetry" active="true">
+        <reloadEveryNMinutes>5</reloadEveryNMinutes>
+        
+        <!-- Points directly to the credentials and service name defined in docker-compose -->
+        <driverClassName>org.postgresql.Driver</driverClassName>
+        <connectionURL>jdbc:postgresql://postgres:5432/telemetry</connectionURL>
+        <dbUser>admin</dbUser>
+        <dbPassword>secure_password123</dbPassword>
+        
+        <!-- SQL statement ERDDAP uses to fetch data sequentially -->
+        <selectString>SELECT buoy_id, time, latitude, longitude, sea_surface_temperature FROM telemetry_table</selectString>
+        <orderByString>time desc</orderByString>
+        
+        <!-- Source-to-Destination variable mappings -->
+        <dataVariable>
+            <sourceName>buoy_id</sourceName>
+            <destinationName>station_id</destinationName>
+            <dataType>String</dataType>
+        </dataVariable>
+        <dataVariable>
+            <sourceName>time</sourceName>
+            <destinationName>time</destinationName>
+            <dataType>String</dataType>
+            <units>yyyy-MM-dd'T'HH:mm:ss'Z'</units>
+        </dataVariable>
+        <dataVariable>
+            <sourceName>latitude</sourceName>
+            <destinationName>latitude</destinationName>
+            <dataType>double</dataType>
+            <units>degrees_north</units>
+        </dataVariable>
+        <dataVariable>
+            <sourceName>longitude</sourceName>
+            <destinationName>longitude</destinationName>
+            <dataType>double</dataType>
+            <units>degrees_east</units>
+        </dataVariable>
+        <dataVariable>
+            <sourceName>sea_surface_temperature</sourceName>
+            <destinationName>sst</destinationName>
+            <dataType>double</dataType>
+            <units>degree_C</units>
+        </dataVariable>
+    </dataset>
+</erddapDatasets>
