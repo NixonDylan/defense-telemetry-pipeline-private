@@ -1,7 +1,7 @@
 import pytest
 from fastapi.testclient import TestClient
 from main import api_gateway
-from tests.test_gateway import create_access_token  # Import the real token generator
+from tests.test_gateway import create_access_token
 
 client = TestClient(api_gateway)
 
