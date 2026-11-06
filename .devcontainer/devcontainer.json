@@ -1,0 +1,17 @@
+{
+  "name": "Cloud Data Pipeline Workspace",
+  "image": "://microsoft.com",
+  "features": {
+    "ghcr.io/devcontainers/features/docker-in-docker:2": {}
+  },
+  "postCreateCommand": "pip install -r requirements.txt && pip install pytest-asyncio httpx python-jose[cryptography] pydantic-settings",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-azuretools.vscode-docker",
+        "ms-python.python",
+        "charliermarsh.ruff"
+      ]
+    }
+  }
+}
