@@ -1,51 +1,36 @@
 version: '3.8'
 
 services:
-  # --- Database Layer ---
   db:
-    image: postgres:15-alpine
-    container_name: defense_telemetry_db
+    image: postgis/postgis:15-3.3
+    container_name: telemetry_db
     environment:
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      POSTGRES_DB: telemetry_db
+      POSTGRES_PASSWORD: securepassword123
+      POSTGRES_DB: telemetry_prod
     ports:
       - "5432:5432"
     volumes:
-      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
-      - postgres_data:/var/lib/postgresql/data
-    networks:
-      - telemetry_network
+      - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d telemetry_db"]
+      test: ["CMD-SHELL", "pg_isready -U postgres -d telemetry_prod"]
       interval: 5s
       timeout: 5s
       retries: 5
 
-  # --- Secure API Gateway Microservice ---
-  api-gateway:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: defense_telemetry_gateway
-    environment:
-      - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
-      - POSTGRES_DB=telemetry_db
-      - POSTGRES_HOST=db
-      - POSTGRES_PORT=5432
-      - JWT_SECRET_KEY=${JWT_SECRET_KEY}
+  web:
+    build: .
+    container_name: telemetry_api
+    restart: always
     ports:
       - "8000:8000"
+    environment:
+      - DATABASE_URL=postgresql://postgres:securepassword123@db:5432/telemetry_prod
     depends_on:
       db:
         condition: service_healthy
-    networks:
-      - telemetry_network
+    volumes:
+      - .:/app
 
 volumes:
-  postgres_data:
-
-networks:
-  telemetry_network:
-    driver: bridge
+  pgdata:
