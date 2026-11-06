@@ -28,8 +28,8 @@ graph TD
     Secrets -->|Injects JWT_SECRET_KEY| Gateway
     
     Gateway -->|2. Ingests Raw Request| Pydantic
-    Pydantic -->|Invalid Type/Schema| Drop[Log Anomaly & Drop Connection]
-    Pydantic -->|3. Valid Clean Payload| Redis
+    Pydantic -->|3a. Invalid Type/Schema Violation| DB_DLQ
+    Pydantic -->|3b. Valid Clean Payload| Redis
     
     Redis -->|4. Holds Serialized JSON Queue String| Celery
     Celery -->|5. Assembles Records into DataFrame Matrix Chunks| Polars
@@ -44,7 +44,7 @@ graph TD
     ERDDAP -->|8. Generates Standardized NetCDF Matrix Profiles| Web
     Web -->|9. Streams In-Situ Visual Dashboard Graphs| Workstation
 
-    %% Applied Custom Styling Configurations
+    %% Applied Custom Design Layout Styling
     classDef secure fill:#e1f5fe,stroke:#03a9f4,stroke-width:2px,color:#000;
     classDef queue fill:#fce4ec,stroke:#f06292,stroke-width:2px,color:#000;
     classDef database fill:#efebe9,stroke:#8d6e63,stroke-width:2px,color:#000;
@@ -58,8 +58,6 @@ graph TD
     class Polars,Pydantic,XML,ERDDAP filter;
 ```
 
-
-
 ---
 
 ## 🧩 Ingestion Path & Core Component Stack
@@ -67,12 +65,13 @@ graph TD
 The platform's data ingestion machinery is completely decoupled to separate ingress network traffic from high-volume analytical computing operations:
 
 1. **Ingress Cryptographic Guard (FastAPI & python-jose):** Acts as the system's front door. It intercepts inbound requests at the `/api/v1/telemetry/submit` entrypoint and runs an asymmetric validation check against the `Authorization: Bearer <JWT>` request header. Payloads lacking an authentic, cryptographically signed token are blocked before straining system memory.
-2. **Zero-Trust Boundary Defense (Pydantic v2):** Enforces strict structural type safety on incoming JSON variables. Timestamps must strictly comply with ISO-8601 formatting, and metrics must map directly onto required numeric structures. Corrupted objects are rejected instantly with an HTTP `422 Unprocessable Entity` error.
-3. **High-Performance Vector Slicing (Polars):** When rows enter the pipeline, Polars processes them using high-speed vectorized data masks rather than checking inputs row-by-row. Data is cleanly split based on physical constraints (Latitudes between -90 and 90; Longitudes between -180 and 180):
-   * **Clean Records:** Sent straight to the primary `telemetry_ingest` table connection pool.
-   * **Corrupted Records:** Automatically stamped with a clear `Out of bounds spatial coordinates` classification tag and routed directly to the Dead Letter Queue (DLQ).
-4. **Immutable Forensic Registry (PostgreSQL & init.sql):** The `telemetry_dlq` table acts as a write-locked, append-only ledger tracking all anomalies. It logs the raw, un-parsed payload verbatim alongside automated database stamps (`inserted_at` and `rejection_reason`), preserving a pristine forensic audit trail to catch sensor glitches or malicious coordinate-spoofing attacks.
-5. **Metadata Standardizer (ERDDAP & datasets.xml):** Translates raw database rows into universally recognized hydrographic data. ERDDAP maps your PostgreSQL tables on boot and overlays strict **CF-1.6** attributes onto columns—mapping internal column strings to globally standardized measurements (e.g., `sea_surface_temperature` and `degrees_north`).
+2. **Zero-Trust Boundary Defense (Pydantic v2):** Enforces strict structural type safety on incoming JSON variables. Timestamps must strictly comply with ISO-8601 formatting, and metrics must map directly onto required numeric structures. 
+3. **Global Exception Middleware Retention:** Instead of silently dropping malformed data types (such as text values injected into numeric metric floats), the gateway intercepts `RequestValidationError` exceptions via middleware [1.21, 1.28]. The un-parsable body is decoded verbatim and committed directly to the permanent database error ledger [1.11].
+4. **High-Performance Vector Slicing (Polars):** Valid structural schemas pass to the Polars parsing layer, which filters out spatial coordinate bounds (Latitudes between -90 and 90; Longitudes between -180 and 180):
+   * **Clean Records:** Sent straight to the primary `telemetry_ingest` table connection pool [1.11].
+   * **Out-of-Bounds Records:** Automatically stamped with an explicit `Out of bounds spatial coordinates` classification tag and routed directly to the Dead Letter Queue (DLQ).
+5. **Immutable Forensic Registry (PostgreSQL & init.sql):** The `telemetry_dlq` table acts as a write-locked, append-only ledger tracking all anomalies [1.11]. It binds spatial anomalies alongside type/schema structure violations into a single dashboard database trail, tracking unalterable insertion times (`inserted_at`) and exact Pydantic/Polars error summaries (`rejection_reason`).
+6. **Metadata Standardizer (ERDDAP & datasets.xml):** Translates raw database rows into universally recognized hydrographic data. ERDDAP maps your PostgreSQL tables on boot and overlays strict **CF-1.6** attributes onto columns—mapping internal column strings to globally standardized measurements (e.g., `sea_surface_temperature` and `degrees_north`).
 
 ---
 
