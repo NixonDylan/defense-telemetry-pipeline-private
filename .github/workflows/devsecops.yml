@@ -59,3 +59,8 @@ jobs:
         run: |
           # Verifies your original code using its initial baseline payloads
           pytest test_pipeline.py -v
+  
+      - name: Execute ERDDAP Metadata Configuration Validation
+        run: |
+          # Calls your new automated cloud validator explicitly
+          pytest tests/test_erddap_config.py -v
