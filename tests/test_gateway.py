@@ -3,9 +3,9 @@ from datetime import datetime, timedelta
 from fastapi import status
 from fastapi.testclient import TestClient
 from jose import jwt
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
-# Import the new, non-colliding variable name explicitly
+# Import the correct variable names explicitly
 from app.main import api_gateway
 from app.config import settings
 import app.main
@@ -22,8 +22,16 @@ def generate_mock_jwt(subject: str, role: str, expires_delta: int = 15) -> str:
 
 @pytest.fixture
 def test_client():
-    """Provides an isolated TestClient instance using the uncollided gateway variable"""
-    app.main.db_manager.pool = MagicMock()
+    """Provides an isolated TestClient instance using an asynchronous pool mock context"""
+    mock_connection = AsyncMock()
+    mock_connection.execute = AsyncMock()
+    
+    mock_pool = MagicMock()
+    mock_pool.acquire.return_value.__aenter__ = AsyncMock(return_value=mock_connection)
+    mock_pool.acquire.return_value.__aexit__ = AsyncMock(return_value=None)
+    
+    app.main.db_manager.pool = mock_pool
+    
     with TestClient(api_gateway) as client:
         yield client
 
