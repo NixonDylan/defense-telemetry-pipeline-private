@@ -18,24 +18,22 @@ def test_datasets_xml_well_formed():
         assert root.tag == "erddapDatasets", f"Expected root tag 'erddapDatasets', but found '{root.tag}'."
     except ET.ParseError as error:
         pytest.fail(f"Malformed XML syntax detected in datasets.xml: {str(error)}")
-
 def test_verify_dataset_database_parameters():
-    """Scan the file to check that any declared datasets contain vital connection properties."""
+    """Scan the file to check that any declared database datasets contain vital connection properties."""
     if not os.path.exists(DATASETS_XML_PATH):
         return
 
     tree = ET.parse(DATASETS_XML_PATH)
     root = tree.getroot()
     
-    # Locate all individual dataset blocks defined inside the manifest
     datasets = root.findall("dataset")
     
     for dataset in datasets:
         dataset_id = dataset.attrib.get("datasetID", "unknown_id")
         dataset_type = dataset.attrib.get("type", "unknown_type")
         
-        # If your dataset interfaces with your PostgreSQL container layout
+        # Correctly evaluate database connection parameters according to ERDDAP specifications
         if dataset_type == "EDDTableFromDatabase":
-            source_url = dataset.find(".//sourceUrl")
-            assert source_url is not None, f"Dataset '{dataset_id}' is missing a sourceUrl configuration tag!"
-            assert "postgresql" in source_url.text.lower(), f"Dataset '{dataset_id}' sourceUrl does not point to a PostgreSQL bridge."
+            connection_url = dataset.find(".//connectionURL")
+            assert connection_url is not None, f"Dataset '{dataset_id}' is missing a connectionURL configuration tag!"
+            assert "postgresql" in connection_url.text.lower(), f"Dataset '{dataset_id}' connectionURL does not point to a PostgreSQL bridge."
