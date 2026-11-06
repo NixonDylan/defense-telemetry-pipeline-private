@@ -7,12 +7,12 @@ services:
     container_name: defense_telemetry_db
     environment:
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-secure_db_pass_change_me}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: telemetry_db
     ports:
       - "5432:5432"
     volumes:
-      - ./init.sql:/docker-entrypoint-initdb.d/init.sql  # Automatically runs original repo table schemas
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
       - postgres_data:/var/lib/postgresql/data
     networks:
       - telemetry_network
@@ -30,16 +30,16 @@ services:
     container_name: defense_telemetry_gateway
     environment:
       - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-secure_db_pass_change_me}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
       - POSTGRES_DB=telemetry_db
       - POSTGRES_HOST=db
       - POSTGRES_PORT=5432
-      - JWT_SECRET_KEY=${JWT_SECRET_KEY:-super_secret_crypto_seal_key_change_me_in_prod}
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY}
     ports:
       - "8000:8000"
     depends_on:
       db:
-        condition: service_healthy  # Ensures FastAPI waits until PostgreSQL fully boots up
+        condition: service_healthy
     networks:
       - telemetry_network
 
