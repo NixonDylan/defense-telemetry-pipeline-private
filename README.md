@@ -6,40 +6,49 @@ An enterprise-grade, high-performance, asynchronous DevSecOps data ingestion pip
 
 ## 🏗️ End-to-End Architectural Data Flow
 
-```text
-[Distributed Edge Nodes / Marine Sensor Arrays]
-       │  
-       │ (1) Generates physical telemetry payload (SST, Lat, Lon)
-       ▼
- ┌──────────┐      
- │  FastAPI │ ◄──────────────────────────────────────── [GitHub Secrets]
- │  Gateway │                                           (Injected JWT_SECRET_KEY)
- └────┬─────┘
-      │ (2) Enforces token validation & Pydantic v2 type checking boundaries
-      ▼
-┌─────────────┐
-│   asyncpg   │ (3) Checks out hot, non-blocking pooled database connections
-│  Pool Node  │
-└─────┬───────┘
-      │ (4) Vectorized Polars separation filter blocks bad injects
-      ▼
-┌───────────────────────────────┐
-│     PostgreSQL Database       │
-│  ├── telemetry_ingest (Valid) │ ◄── [init.sql] Initializes database topologies
-│  └── telemetry_dlq    (Bad)   │              Creates an append-only forensic trail
-└─────┬─────────────────────────┘
-      │
-      │ (5) Relational topology mapping loop reads table cells
-      ▼
- ┌──────────┐
- │  ERDDAP  │ ◄── [datasets.xml] Injects strict global CF-1.6 metadata properties
- │  Server  │
- └────┬─────┘
-      │
-      │ (6) Exposes standardized RESTful web dashboard graphs & NetCDF matrix profiles
-      ▼
-[Advanced Hydrographic Systems / Weather Forecasting Workstations (Web/OPeNDAP)]
+```mermaid
+graph TD
+    %% Define System Nodes
+    Edge[Distributed Edge Nodes / Marine Sensor Arrays]
+    Gateway[FastAPI API Gateway Layer]
+    Secrets[(GitHub Secrets / Env Memory)]
+    Pool[asyncpg Connection Pool Node]
+    Polars{Polars Vector Filter Mask}
+    DB_Valid[(PostgreSQL: telemetry_ingest)]
+    DB_DLQ[(PostgreSQL: telemetry_dlq)]
+    XML[datasets.xml Configuration Map]
+    ERDDAP[ERDDAP Server Engine]
+    Web[OPeNDAP / Web RESTful Services]
+    Workstation[Hydrographic Workstations / Forecasting Models]
+
+    %% Define Structural Data Flow
+    Edge -->|1. Transmits Raw Telemetry Payload| Gateway
+    Secrets -->|Injects JWT_SECRET_KEY| Gateway
+    Gateway -->|2. Enforces Token Validation & Pydantic Boundaries| Pool
+    Pool -->|3. Borrows Hot Non-Blocking Connection| Polars
+    
+    %% Spatial Filtering Decisions
+    Polars -->|4a. Valid Coordinates Passed| DB_Valid
+    Polars -->|4b. Out-of-Bounds Coordinates Segregated| DB_DLQ
+    
+    %% Downstream Data Processing and Presentation
+    DB_Valid -->|5. Relational Topology Mapping Loop| ERDDAP
+    XML -->|Injects CF-1.6 Metadata Schema Attributes| ERDDAP
+    ERDDAP -->|6. Generates Standardized NetCDF Matrix Profiles| Web
+    Web -->|7. Streams In-Situ Visual Graphs| Workstation
+
+    %% Applied Custom Styling Configurations
+    classDef secure fill:#e1f5fe,stroke:#03a9f4,stroke-width:2px,color:#000;
+    classDef database fill:#efebe9,stroke:#8d6e63,stroke-width:2px,color:#000;
+    classDef network fill:#fff3e0,stroke:#ffb74d,stroke-width:2px,color:#000;
+    classDef filter fill:#f1f8e9,stroke:#8bc34a,stroke-width:2px,color:#000;
+
+    class Gateway,Secrets secure;
+    class DB_Valid,DB_DLQ,Pool database;
+    class Edge,Web,Workstation network;
+    class Polars,XML,ERDDAP filter;
 ```
+
 
 ---
 
