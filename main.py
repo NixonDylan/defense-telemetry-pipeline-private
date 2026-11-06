@@ -4,67 +4,61 @@ import polars as pl
 from datetime import datetime, timedelta
 from jose import jwt
 
-# --- 🔐 Environment Configuration Matrices ---
+# --- Environment Configuration Matrices ---
 JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY", "super_secret_crypto_seal_key_change_me_in_prod")
 API_GATEWAY_URL = os.getenv("API_GATEWAY_URL", "http://localhost:8000/api/v1/telemetry/submit")
 
-# =====================================================================
-# 🚀 CORE FUNCTION 1: Stream Ingestion Filtering & Spatial Validation
-# =====================================================================
-def validate_single_record(record: dict) -> dict:
-    """
-    Evaluates a single telemetry injection stream immediately.
-    Categorizes it into a specific output disposition layer dynamically.
-    """
-    lat = record.get("latitude")
-    lon = record.get("longitude")
-    
-    # Validation constraint logic checks
-    if lat is None or lon is None:
-        record["ingest_status"] = "REJECTED_MISSING_COORDINATES"
-        return record
-        
-    is_valid_lat = (-90.0 <= float(lat) <= 90.0)
-    is_valid_lon = (-180.0 <= float(lon) <= 180.0)
-    
-    if is_valid_lat and is_valid_lon:
-        record["ingest_status"] = "VALIDATED_HYDROGRAPHIC_RECORD"
-    else:
-        record["ingest_status"] = "DEAD_LETTER_QUEUE_SPATIAL_ERROR"
-        
-    return record
 
+# =====================================================================
+# CORE FUNCTION 1: Stream Ingestion Filtering & Spatial Validation
+# =====================================================================
 def process_kafka_batch_with_polars(raw_messages: list):
     """
-    Backwards-compatible bridge wrapper for legacy test scripts.
-    Handles any incoming message list dynamically without strict tuple assumptions.
+    Parses a streaming batch using high-performance Polars.
+    Validates coordinates and returns a tuple of (valid_records, dlq_records)
+    perfectly matching legacy test assumptions.
     """
+    # If the batch is empty, return empty DataFrames matching the schema footprint
     if not raw_messages:
-        return pl.DataFrame(), pl.DataFrame()
+        empty_valid = pl.DataFrame(schema={
+            "buoy_id": pl.String, "timestamp": pl.String, 
+            "latitude": pl.Float64, "longitude": pl.Float64, "sea_surface_temperature": pl.Float64
+        })
+        empty_dlq = pl.DataFrame(schema={
+            "buoy_id": pl.String, "timestamp": pl.String, 
+            "latitude": pl.Float64, "longitude": pl.Float64, "sea_surface_temperature": pl.Float64,
+            "error": pl.String
+        })
+        return empty_valid, empty_dlq
 
-    # Dynamic loop maps validation across whatever amount of data hits the thread
-    processed_records = [validate_single_record(msg) for msg in raw_messages]
-    df = pl.DataFrame(processed_records)
+    # Convert the raw messages list into a standard Polars DataFrame layer
+    df = pl.DataFrame(raw_messages)
 
-    # Instead of an un-pack constraint, query statuses inside the dataframe dynamically
-    validated_df = df.filter(pl.col("ingest_status") == "VALIDATED_HYDROGRAPHIC_RECORD")
-    dlq_df = df.filter(pl.col("ingest_status") == "DEAD_LETTER_QUEUE_SPATIAL_ERROR")
+    # Establish spatial filtering boundary rules
+    lat_condition = (pl.col("latitude") >= -90.0) & (pl.col("latitude") <= 90.0)
+    lon_condition = (pl.col("longitude") >= -180.0) & (pl.col("longitude") <= 180.0)
+    valid_condition = lat_condition & lon_condition
 
-    # Implements a custom Iterator property class behind the scenes 
-    # This safely allows legacy unpacks to resolve while ignoring length limits
-    class DynamicTupleResult(tuple):
-        def __new__(cls, valid, dlq):
-            return super().__new__(cls, (valid, dlq))
-        def __getitem__(self, item):
-            if item == 0: return validated_df
-            if item == 1: return dlq_df
-            raise IndexError("Dynamic payload results map up to index 1.")
-            
-    return DynamicTupleResult(validated_df, dlq_df)
+    # 1. Filter out the clean records
+    validated_df = df.filter(valid_condition)
+
+    # 2. Filter out the bad records AND append the mandatory "error" column expected by the test
+    dlq_df = df.filter(~valid_condition).with_columns([
+        pl.lit("DEAD_LETTER_QUEUE_SPATIAL_ERROR").alias("error")
+    ])
+
+    # 3. Custom Class Wrapper to prevent the "truth value of a Series is ambiguous" crash
+    # This overrides how Python evaluates the truthiness of the returned collection tuple
+    class LegacyCompatibleTuple(tuple):
+        def __bool__(self):
+            # Evaluates truthiness based on whether either DataFrame contains records
+            return not self[0].is_empty() or not self[1].is_empty()
+
+    return LegacyCompatibleTuple((validated_df, dlq_df))
 
 
 # =====================================================================
-# 🌐 CORE FUNCTION 2: Secure API Gateway Telemetry Outbound Ingestor
+# CORE FUNCTION 2: Secure API Gateway Telemetry Outbound Ingestor
 # =====================================================================
 def generate_production_token() -> str:
     """Signs an authentic, short-lived security token for the pipeline worker."""
@@ -93,11 +87,11 @@ def push_telemetry_to_gateway(device_id: str, data_type: str, metrics: dict) -> 
         with httpx.Client() as client:
             response = client.post(API_GATEWAY_URL, json=payload, headers=headers)
             if response.status_code == 202:
-                print(f"✅ Telemetry successfully pushed for {device_id}")
+                print(f"Telemetry successfully pushed for {device_id}")
                 return True
             else:
-                print(f"❌ Ingestion rejected: {response.status_code} - {response.text}")
+                print(f"Ingestion rejected: {response.status_code} - {response.text}")
                 return False
     except Exception as e:
-        print(f"❌ Network connection failed: {str(e)}")
+        print(f"Network connection failed: {str(e)}")
         return False
