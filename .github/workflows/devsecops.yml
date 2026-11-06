@@ -72,9 +72,10 @@ jobs:
       - name: Execute ERDDAP Metadata Configuration Validation
         run: pytest tests/test_erddap_config.py -v
 
-      # This integration test step now securely injects variables dynamically from GitHub secrets
+      # Fixed by adding PYTHONPATH to register your app module in the cloud runner environment
       - name: Execute New API Gateway Unit Tests
         env:
           POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
           JWT_SECRET_KEY: ${{ secrets.JWT_SECRET_KEY }}
+          PYTHONPATH: .
         run: pytest tests/test_gateway.py -v
