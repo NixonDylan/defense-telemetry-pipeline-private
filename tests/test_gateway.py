@@ -19,22 +19,28 @@ def generate_mock_jwt(subject: str, role: str, expires_delta: int = 15) -> str:
     }
     return jwt.encode(payload, settings.JWT_SECRET_KEY, algorithm=settings.JWT_ALGORITHM)
 
+from unittest.mock import AsyncMock, MagicMock
 
 @pytest.fixture
 def test_client():
-    """Provides an isolated TestClient instance using an asynchronous pool mock context"""
+    """Provides an isolated TestClient instance by fully mocking out the database manager layer."""
+    # 1. Create a simulated connection channel that mocks database execution calls
     mock_connection = AsyncMock()
-    mock_connection.execute = AsyncMock()
+    mock_connection.execute = AsyncMock(return_value="INSERT 0 1")
     
+    # 2. Create a fully asynchronous database pool mock matching asyncpg behaviors
     mock_pool = MagicMock()
     mock_pool.acquire.return_value.__aenter__ = AsyncMock(return_value=mock_connection)
     mock_pool.acquire.return_value.__aexit__ = AsyncMock(return_value=None)
     
+    # 3. Explicitly override the global database manager methods to completely bypass real socket execution
     app.main.db_manager.pool = mock_pool
+    app.main.db_manager.connect = AsyncMock()     # Disables actual asyncpg.create_pool() triggers
+    app.main.db_manager.disconnect = AsyncMock()  # Disables pool teardown blocks
     
+    # 4. Invoke the TestClient context cleanly
     with TestClient(api_gateway) as client:
         yield client
-
 
 @pytest.fixture
 def valid_telemetry_payload():
