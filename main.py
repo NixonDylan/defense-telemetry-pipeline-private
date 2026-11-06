@@ -3,10 +3,11 @@ import httpx
 import polars as pl
 from datetime import datetime, timedelta
 from jose import jwt
+from fastapi.testclient import TestClient
+from app.main import api_gateway
 
 # --- Environment Configuration Matrices ---
 JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY", "super_secret_crypto_seal_key_change_me_in_prod")
-API_GATEWAY_URL = os.getenv("API_GATEWAY_URL", "http://localhost:8000/api/v1/telemetry/submit")
 
 
 # =====================================================================
@@ -20,8 +21,6 @@ class LegacyCompatibleDataFrame(pl.DataFrame):
     the Series ambiguity exceptions.
     """
     def __getitem__(self, key):
-        # If the legacy test attempts a row lookup like valid_records[0],
-        # convert that row slice immediately into an indexable Python dictionary.
         if isinstance(key, int):
             if key < len(self):
                 return self.row(key, named=True)
@@ -35,7 +34,6 @@ def process_kafka_batch_with_polars(raw_messages: list):
     Validates coordinates and returns a tuple of (valid_records, dlq_records)
     perfectly matching legacy test assumptions.
     """
-    # If the batch is empty, return empty DataFrames matching the schema footprint
     if not raw_messages:
         empty_valid = LegacyCompatibleDataFrame(schema={
             "buoy_id": pl.String, "timestamp": pl.String, 
@@ -48,25 +46,19 @@ def process_kafka_batch_with_polars(raw_messages: list):
         })
         return empty_valid, empty_dlq
 
-    # Convert the raw messages list into a standard Polars DataFrame layer
     df = pl.DataFrame(raw_messages)
 
-    # Establish spatial filtering boundary rules
     lat_condition = (pl.col("latitude") >= -90.0) & (pl.col("latitude") <= 90.0)
     lon_condition = (pl.col("longitude") >= -180.0) & (pl.col("longitude") <= 180.0)
     valid_condition = lat_condition & lon_condition
 
-    # 1. Filter out the clean records and cast to our proxy layout
     validated_df = LegacyCompatibleDataFrame(df.filter(valid_condition))
-
-    # 2. Filter out the bad records, append the error column, and cast to our proxy layout
     dlq_df = LegacyCompatibleDataFrame(
         df.filter(~valid_condition).with_columns([
             pl.lit("Out of bounds spatial coordinates").alias("error")
         ])
     )
 
-    # 3. Custom Class Wrapper to prevent collection truthiness crashes
     class LegacyCompatibleTuple(tuple):
         def __bool__(self):
             return len(self) > 0
@@ -87,7 +79,7 @@ def generate_production_token() -> str:
     return jwt.encode(payload, JWT_SECRET_KEY, algorithm="HS256")
 
 def push_telemetry_to_gateway(device_id: str, data_type: str, metrics: dict) -> bool:
-    """Pushes a structured telemetry model live across the API gateway network."""
+    """Pushes a structured telemetry model in-memory via FastAPI's TestClient."""
     token = generate_production_token()
     headers = {"Authorization": f"Bearer {token}"}
     
@@ -101,14 +93,14 @@ def push_telemetry_to_gateway(device_id: str, data_type: str, metrics: dict) -> 
     }
     
     try:
-        with httpx.Client() as client:
-            response = client.post(API_GATEWAY_URL, json=payload, headers=headers)
-            if response.status_code == 202:
-                print(f"Telemetry successfully pushed for {device_id}")
-                return True
-            else:
-                print(f"Ingestion rejected: {response.status_code} - {response.text}")
-                return False
+        client = TestClient(api_gateway)
+        response = client.post("/api/v1/telemetry/submit", json=payload, headers=headers)
+        if response.status_code == 202:
+            print(f"Telemetry successfully pushed for {device_id}")
+            return True
+        else:
+            print(f"Ingestion rejected: {response.status_code} - {response.text}")
+            return False
     except Exception as e:
-        print(f"Network connection failed: {str(e)}")
+        print(f"Gateway submission failed: {str(e)}")
         return False
