@@ -1,5 +1,4 @@
 import os
-import httpx
 import polars as pl
 from datetime import datetime, timedelta
 from jose import jwt
