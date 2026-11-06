@@ -1,0 +1,94 @@
+version: '3.8'
+
+services:
+  # -------------------------------------------------------------------------
+  # STORAGE LAYER: PostGIS Database
+  # -------------------------------------------------------------------------
+  postgres:
+    image: postgis/postgis:15-3.3
+    container_name: cnmoc_postgis
+    environment:
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-secure_password123}
+      POSTGRES_DB: telemetry
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      # Automatically executes init.sql schema script on container startup
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U admin -d telemetry"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # -------------------------------------------------------------------------
+  # DECOUPLED COMMUNICATION LAYER: Redis Message Broker
+  # -------------------------------------------------------------------------
+  redis_broker:
+    image: redis:7-alpine
+    container_name: cnmoc_redis_broker
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # -------------------------------------------------------------------------
+  # COMPUTE LAYER: Ingestion Boundary (Producer Service)
+  # -------------------------------------------------------------------------
+  ingestion_engine:
+    build: .
+    container_name: cnmoc_ingestion_engine
+    # Drives the continuous while True ingestion loop in main.py
+    command: python main.py
+    environment:
+      - CELERY_BROKER_URL=redis://redis_broker:6379/0
+      - DATABASE_URL=postgresql://admin:${DB_PASSWORD:-secure_password123}@postgres:5432/telemetry
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis_broker:
+        condition: service_healthy
+
+  # -------------------------------------------------------------------------
+  # COMPUTE LAYER: Asynchronous Task Workers (Consumer Service)
+  # -------------------------------------------------------------------------
+  pipeline_worker:
+    build: .
+    container_name: cnmoc_pipeline_worker
+    # Spins up Celery pointing to the celery_app instance inside main.py
+    command: celery -A main.celery_app worker --loglevel=info --concurrency=4
+    environment:
+      - CELERY_BROKER_URL=redis://redis_broker:6379/0
+      - DATABASE_URL=postgresql://admin:${DB_PASSWORD:-secure_password123}@postgres:5432/telemetry
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis_broker:
+        condition: service_healthy
+
+  # -------------------------------------------------------------------------
+  # DISSEMINATION LAYER: ERDDAP Gateway
+  # -------------------------------------------------------------------------
+  erddap:
+    image: axioms/erddap:2.23
+    container_name: cnmoc_erddap
+    ports:
+      - "8080:8080"
+    environment:
+      - DB_HOST=postgres
+      - DB_NAME=telemetry
+      - ERDDAP_READ_USER=admin
+      - ERDDAP_READ_PASSWORD=${DB_PASSWORD:-secure_password123}
+    volumes:
+      - ./datasets.xml:/usr/local/tomcat/content/erddap/datasets.xml
+    depends_on:
+      postgres:
+        condition: service_healthy
+        
+volumes:
+  pgdata:
