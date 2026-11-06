@@ -1,9 +1,3 @@
-import pytest
-from fastapi.testclient import TestClient
-from main import api_gateway
-
-client = TestClient(api_gateway)
-
 def test_live_end_to_end_pipeline_ingestion():
     mock_payload = {
         "device_id": "E2E-CLOUD-BUOY-01",
@@ -20,6 +14,8 @@ def test_live_end_to_end_pipeline_ingestion():
         headers={"Authorization": "Bearer MOCK_VALID_ADMIN_TOKEN"}
     )
     
-    assert response.status_code == 202, f"The API gateway rejected the pipeline telemetry payload: {response.text}"
+    assert response.status_code == 202, (
+        f"Gateway rejected payload. Status: {response.status_code}, Body: {response.text}"
+    )
     data = response.json()
     assert data.get("status") == "ACCEPTED"
