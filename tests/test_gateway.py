@@ -3,9 +3,16 @@ from datetime import datetime, timedelta
 from fastapi import status
 from fastapi.testclient import TestClient
 from jose import jwt
+from unittest.mock import MagicMock
 
 from app.main import app
 from app.config import settings
+import app.main  # Import to allow database property mocking
+
+# --- CRITICAL FIX: Mock the Database Pool Layer for Unit Isolation ---
+# This tricks the route into believing a healthy connection pool is present
+mock_pool = MagicMock()
+app.main.db_manager.pool = mock_pool
 
 client = TestClient(app)
 
@@ -39,7 +46,6 @@ def test_submit_telemetry_without_auth(valid_telemetry_payload):
 
 def test_submit_telemetry_with_invalid_role(valid_telemetry_payload):
     """Ensure authorized accounts lacking RBAC clearing scopes are rejected"""
-    # 'guest' is a valid JWT payload structure but doesn't meet the allowed ingestion scope roles
     token = generate_mock_jwt(subject="untrusted_client", role="guest")
     headers = {"Authorization": f"Bearer {token}"}
     
@@ -64,7 +70,6 @@ def test_submit_telemetry_invalid_schema():
     token = generate_mock_jwt(subject="buoy_station_alpha", role="edge_device")
     headers = {"Authorization": f"Bearer {token}"}
     
-    # Missing required payload elements ('metrics', 'data_type')
     corrupted_payload = {
         "device_id": "EDGE-TEST-NODE-99",
         "sensor_status": "FAULTY"
