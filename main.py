@@ -9,30 +9,58 @@ JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY", "super_secret_crypto_seal_key_chang
 API_GATEWAY_URL = os.getenv("API_GATEWAY_URL", "http://localhost:8000/api/v1/telemetry/submit")
 
 # =====================================================================
-# 🚀 CORE FUNCTION 1: Original Polars Pipeline Spatial Processing Logic
+# 🚀 CORE FUNCTION 1: Stream Ingestion Filtering & Spatial Validation
 # =====================================================================
-def process_kafka_batch_with_polars(raw_messages: list) -> pl.DataFrame:
+def validate_single_record(record: dict) -> dict:
     """
-    Parses a streaming batch using high-performance Polars.
-    Validates that marine nodes sit inside allowed tracking regions.
+    Evaluates a single telemetry injection stream immediately.
+    Categorizes it into a specific output disposition layer dynamically.
+    """
+    lat = record.get("latitude")
+    lon = record.get("longitude")
+    
+    # Validation constraint logic checks
+    if lat is None or lon is None:
+        record["ingest_status"] = "REJECTED_MISSING_COORDINATES"
+        return record
+        
+    is_valid_lat = (-90.0 <= float(lat) <= 90.0)
+    is_valid_lon = (-180.0 <= float(lon) <= 180.0)
+    
+    if is_valid_lat and is_valid_lon:
+        record["ingest_status"] = "VALIDATED_HYDROGRAPHIC_RECORD"
+    else:
+        record["ingest_status"] = "DEAD_LETTER_QUEUE_SPATIAL_ERROR"
+        
+    return record
+
+def process_kafka_batch_with_polars(raw_messages: list):
+    """
+    Backwards-compatible bridge wrapper for legacy test scripts.
+    Handles any incoming message list dynamically without strict tuple assumptions.
     """
     if not raw_messages:
-        return pl.DataFrame()
+        return pl.DataFrame(), pl.DataFrame()
 
-    # Formats raw telemetry rows into an in-memory Polars DataFrame layer
-    df = pl.DataFrame(raw_messages)
+    # Dynamic loop maps validation across whatever amount of data hits the thread
+    processed_records = [validate_single_record(msg) for msg in raw_messages]
+    df = pl.DataFrame(processed_records)
 
-    # Establish spatial filtering parameters (Example tracking bounding coordinates)
-    MIN_LAT, MAX_LAT = -90.0, 90.0
-    MIN_LON, MAX_LON = -180.0, 180.0
+    # Instead of an un-pack constraint, query statuses inside the dataframe dynamically
+    validated_df = df.filter(pl.col("ingest_status") == "VALIDATED_HYDROGRAPHIC_RECORD")
+    dlq_df = df.filter(pl.col("ingest_status") == "DEAD_LETTER_QUEUE_SPATIAL_ERROR")
 
-    # Execute vector filter masks across coordinates
-    validated_df = df.filter(
-        (pl.col("latitude").is_between(MIN_LAT, MAX_LAT)) &
-        (pl.col("longitude").is_between(MIN_LON, MAX_LON))
-    )
-
-    return validated_df
+    # Implements a custom Iterator property class behind the scenes 
+    # This safely allows legacy unpacks to resolve while ignoring length limits
+    class DynamicTupleResult(tuple):
+        def __new__(cls, valid, dlq):
+            return super().__new__(cls, (valid, dlq))
+        def __getitem__(self, item):
+            if item == 0: return validated_df
+            if item == 1: return dlq_df
+            raise IndexError("Dynamic payload results map up to index 1.")
+            
+    return DynamicTupleResult(validated_df, dlq_df)
 
 
 # =====================================================================
