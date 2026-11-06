@@ -5,7 +5,8 @@ from fastapi.testclient import TestClient
 from jose import jwt
 from unittest.mock import MagicMock
 
-from app.main import app
+# Import the new, non-colliding variable name explicitly
+from app.main import api_gateway
 from app.config import settings
 import app.main
 
@@ -21,9 +22,9 @@ def generate_mock_jwt(subject: str, role: str, expires_delta: int = 15) -> str:
 
 @pytest.fixture
 def test_client():
-    """Provides an isolated TestClient instance utilizing a clean with-context block"""
+    """Provides an isolated TestClient instance using the uncollided gateway variable"""
     app.main.db_manager.pool = MagicMock()
-    with TestClient(app) as client:
+    with TestClient(api_gateway) as client:
         yield client
 
 

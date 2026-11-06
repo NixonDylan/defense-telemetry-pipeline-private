@@ -3,16 +3,16 @@ import json
 from app.schemas import TelemetryPayload
 from app.auth import verify_telemetry_scope
 from app.database import db_manager
-import app.database  # Import the explicit module namespace
+import app.database
 
-app = FastAPI(
+# Renaming the instance prevents Python from colliding the folder name 'app' with the server variable
+api_gateway = FastAPI(
     title="Secure Defense Telemetry API Gateway", 
     version="1.0.0",
-    # CRITICAL FIX: Explicitly target the database module property to prevent module collision
     lifespan=app.database.lifespan 
 )
 
-@app.post(
+@api_gateway.post(
     "/api/v1/telemetry/submit", 
     status_code=status.HTTP_202_ACCEPTED,
     summary="Ingest secure streaming telemetry payload"
