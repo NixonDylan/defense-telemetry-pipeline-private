@@ -48,6 +48,67 @@ graph TD
     class Edge,Web,Workstation network;
     class Polars,XML,ERDDAP filter;
 ```
+graph TD
+    %% Component Layer Blocks
+    subgraph Data Producer Layer [1. Local Client Environment]
+        MainScript[main.py]
+        TestE2E[tests/test_e2e_pipeline.py]
+    end
+
+    subgraph Container Networking Layer [2. Containerized Boundary]
+        AppMain[app/main.py]
+        AppConfig[app/config.py]
+        AppDatabase[app/database.py]
+        AppSchemas[app/schemas.py]
+        AppAuth[app/auth.py]
+        CeleryWorker[celery_worker.py]
+    end
+
+    subgraph Enterprise Infrastructure Layer [3. Live Backing Services]
+        RedisStack[(Redis 7 Service Container)]
+        PG_DB[(PostgreSQL 15 Service Container)]
+        InitSQL[init.sql Setup Script]
+        DatasetsXML[datasets.xml Blueprint]
+        ERDDAP_Server[ERDDAP Data Server]
+    end
+
+    %% Software/Module Mappings (Where they live)
+    PydanticEngine[Pydantic v2 Types] -.-> AppSchemas
+    FastAPIApp[FastAPI Framework] -.-> AppMain
+    JoseCrypto[python-jose Auth] -.-> AppAuth
+    AsyncpgDriver[asyncpg Connection Pool] -.-> AppDatabase
+    PsycopgDriver[psycopg3 Bulk-Copy Engine] -.-> CeleryWorker
+    PolarsEngine[Polars DataFrames] -.-> MainScript
+    PolarsEngine -.-> CeleryWorker
+
+    %% Core Dynamic Data Flow
+    TestE2E -->|Triggers Outbound Stream| MainScript
+    MainScript -->|1. HTTP POST Payload With Short-Lived JWT Token| AppMain
+    
+    AppConfig -->|Provides Hardened Environment Variables| AppMain
+    AppMain -->|2. Runs Ingress Authentication Check| AppAuth
+    AppMain -->|3. Validates Payload Schema Metrics| AppSchemas
+    
+    AppMain -->|4. Serializes Clean JSON Task to Buffer| RedisStack
+    RedisStack -->|5. Streams Queue Task Payload| CeleryWorker
+    
+    CeleryWorker -->|6. Assembles Payload Strings Into Matrix Rows| CeleryWorker
+    CeleryWorker -->|7. Executes Non-Blocking Bulk DB Write Checkouts| AppDatabase
+    AppDatabase -->|8. Borrows Async Sockets| PG_DB
+    InitSQL -->|Pre-Initializes telemetry_ingest & telemetry_dlq Tables| PG_DB
+    
+    PG_DB -->|9. Reads Raw Database Relational Cells| ERDDAP_Server
+    DatasetsXML -->|Overlays Strict CF-1.6 Schema Metrics| ERDDAP_Server
+    ERDDAP_Server -->|10. Exposes Standardized OPeNDAP NetCDF Matrices| Workstations[End-User Workstations]
+
+    %% Applied Custom Design Layout Styling
+    classDef files fill:#fff3e0,stroke:#ffb74d,stroke-width:2px,color:#000;
+    classDef backing fill:#efebe9,stroke:#8d6e63,stroke-width:2px,color:#000;
+    classDef software fill:#e1f5fe,stroke:#03a9f4,stroke-width:1px,stroke-dasharray: 5 5,color:#0288d1;
+    
+    class MainScript,TestE2E,AppMain,AppConfig,AppDatabase,AppSchemas,AppAuth,CeleryWorker,InitSQL,DatasetsXML files;
+    class RedisStack,PG_DB,ERDDAP_Server backing;
+    class PydanticEngine,FastAPIApp,JoseCrypto,AsyncpgDriver,PsycopgDriver,PolarsEngine software;
 
 
 ---
