@@ -22,10 +22,7 @@ def generate_mock_jwt(subject: str, role: str, expires_delta: int = 15) -> str:
 @pytest.fixture
 def test_client():
     """Provides an isolated TestClient instance utilizing a clean with-context block"""
-    # Instruct the internal routing logic that a mock pool is active
     app.main.db_manager.pool = MagicMock()
-    
-    # Using 'with' forces FastAPI to handle lifespan contexts safely in the cloud runner
     with TestClient(app) as client:
         yield client
 
