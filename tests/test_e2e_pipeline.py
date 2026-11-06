@@ -1,6 +1,6 @@
 import pytest
 from fastapi.testclient import TestClient
-from main import app  # Import your FastAPI application instance
+from main import app  # Assuming your FastAPI app instance is defined in main.py
 
 client = TestClient(app)
 
@@ -13,7 +13,7 @@ def test_live_end_to_end_pipeline_ingestion():
         "metrics": {"wind_speed_knots": 22.4, "sea_temp_c": 14.8}
     }
     
-    # Generate a valid test token or use the appropriate headers matching your gateway auth fixture
+    # Use FastAPI's TestClient to bypass external network port binding issues
     response = client.post(
         "/telemetry/submit", 
         json=mock_payload,
