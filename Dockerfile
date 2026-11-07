@@ -1,5 +1,5 @@
 # --- Stage 1: Build Dependencies ---
-FROM python:3.11-slim AS builder
+FROM python:3.12-slim AS builder
 
 WORKDIR /build
 
@@ -16,7 +16,7 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir --prefix=/install -r requirements.txt
 
 # --- Stage 2: Final Runtime ---
-FROM python:3.11-slim AS runtime
+FROM python:3.12-slim AS runtime
 
 WORKDIR /app
 
@@ -34,11 +34,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Copy installed site-packages directly from the builder's prefix into appuser's local path
 COPY --from=builder --chown=appuser:appgroup /install /home/appuser/.local
 
-# Copy application source code (matching your app.main path structure)
+# Copy application source code
 COPY --chown=appuser:appgroup . .
 
 USER appuser
 
 EXPOSE 8000
 
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "main:api_gateway", "--host", "0.0.0.0", "--port", "8000"]
