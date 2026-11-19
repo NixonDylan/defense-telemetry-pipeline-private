@@ -1,33 +1,31 @@
 -- Enable the PostGIS spatial extension inside the telemetry database
 CREATE EXTENSION IF NOT EXISTS postgis;
 
--- Create the primary ingestion destination table
-CREATE TABLE IF NOT EXISTS telemetry_table (
-    id BIGSERIAL,
-    buoy_id VARCHAR(50) NOT NULL,
-    time TIMESTAMPTZ NOT NULL,
-    latitude DOUBLE PRECISION NOT NULL,
-    longitude DOUBLE PRECISION NOT NULL,
-    sea_surface_temperature DOUBLE PRECISION,
+-- Drop legacy schema tables if re-initializing
+DROP TABLE IF EXISTS telemetry_table CASCADE;
+DROP TABLE IF EXISTS telemetry_ingest CASCADE;
+DROP TABLE IF EXISTS telemetry_dlq CASCADE;
 
-    
-    -- SENIOR PATTERN: PostGIS automatically calculates the geometry point directly 
-    -- from latitude and longitude variables on write, entirely bypassing post-ingestion table scans.
-    geom geometry(Point, 4326) GENERATED ALWAYS AS (ST_SetSRID(ST_MakePoint(longitude, latitude), 4326)) STORED,
-    
-    PRIMARY KEY (id, time)
+-- Create the primary ingestion destination table matching app/main.py
+CREATE TABLE telemetry_ingest (
+    id BIGSERIAL PRIMARY KEY,
+    device_id VARCHAR(100) NOT NULL,
+    timestamp TIMESTAMPTZ NOT NULL,
+    data_type VARCHAR(50) NOT NULL,
+    metrics JSONB NOT NULL,
+    sensor_status VARCHAR(50) NOT NULL,
+    classification_level VARCHAR(50) NOT NULL DEFAULT 'UNCLASSIFIED',
+    ingested_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- Index the geometry column for ultra-fast spatial and geographical API queries
-CREATE INDEX IF NOT EXISTS telemetry_spatial_idx ON telemetry_table USING GIST (geom);
--- Index time series for rapid ERDDAP rendering sequential lookups
-CREATE INDEX IF NOT EXISTS telemetry_time_idx ON telemetry_table (time DESC);
+-- Index device_id and timestamp for rapid time-series queries
+CREATE INDEX telemetry_ingest_device_idx ON telemetry_ingest (device_id);
+CREATE INDEX telemetry_ingest_time_idx ON telemetry_ingest (timestamp DESC);
 
--- Create your Dead Letter Queue table to catch Pydantic validation failures
-CREATE TABLE IF NOT EXISTS telemetry_dlq (
-    source_topic    TEXT NOT NULL DEFAULT 'buoy_telemetry_stream',
-    payload_raw     JSONB NOT NULL,
-    errors          JSONB NOT NULL,
-    received_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    status          TEXT NOT NULL DEFAULT 'pending'
+-- Create the Dead Letter Queue (DLQ) table matching app/main.py global exception middleware
+CREATE TABLE telemetry_dlq (
+    id BIGSERIAL PRIMARY KEY,
+    raw_payload TEXT NOT NULL,
+    rejection_reason TEXT NOT NULL,
+    rejected_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
