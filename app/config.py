@@ -10,7 +10,7 @@ class Settings(BaseSettings):
 
     # Required secrets (must be injected via environment variables or .env)
     POSTGRES_PASSWORD: str = Field(..., min_length=8)
-    JWT_SECRET_KEY: str = Field(..., min_length=32)
+    JWT_SECRET_KEY: str = Field(..., min_length=16)
 
     JWT_ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
