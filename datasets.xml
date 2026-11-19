@@ -1,46 +1,88 @@
 <erddapDatasets>
     <dataset type="EDDTableFromDatabase" datasetID="cnmoc_buoy_telemetry" active="true">
         <reloadEveryNMinutes>5</reloadEveryNMinutes>
-        
+
         <!-- Points directly to the credentials and service name defined in docker-compose -->
         <driverClassName>org.postgresql.Driver</driverClassName>
         <connectionURL>jdbc:postgresql://postgres:5432/telemetry</connectionURL>
         <dbUser>admin</dbUser>
         <dbPassword>secure_password123</dbPassword>
-        
-        <!-- SQL statement ERDDAP uses to fetch data sequentially -->
-        <selectString>SELECT buoy_id, time, latitude, longitude, sea_surface_temperature FROM telemetry_table</selectString>
-        <orderByString>time desc</orderByString>
-        
+
+        <!-- Extract top-level and JSONB telemetry fields from telemetry_ingest -->
+        <selectString>
+            SELECT
+                device_id,
+                to_char(timestamp AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS timestamp,
+                (metrics->>'latitude')::double precision AS latitude,
+                (metrics->>'longitude')::double precision AS longitude,
+                (metrics->>'sea_surface_temperature')::double precision AS sea_surface_temperature
+            FROM telemetry_ingest
+            WHERE metrics ? 'latitude'
+              AND metrics ? 'longitude'
+              AND metrics ? 'sea_surface_temperature'
+        </selectString>
+        <orderByString>timestamp desc</orderByString>
+
         <!-- Source-to-Destination variable mappings -->
         <dataVariable>
-            <sourceName>buoy_id</sourceName>
+            <sourceName>device_id</sourceName>
             <destinationName>station_id</destinationName>
             <dataType>String</dataType>
+            <addAttributes>
+                <att name="cf_role">timeseries_id</att>
+                <att name="long_name">Buoy / Device Identifier</att>
+            </addAttributes>
         </dataVariable>
+
         <dataVariable>
-            <sourceName>time</sourceName>
+            <sourceName>timestamp</sourceName>
             <destinationName>time</destinationName>
             <dataType>String</dataType>
-            <units>yyyy-MM-dd'T'HH:mm:ss'Z'</units>
+            <addAttributes>
+                <att name="standard_name">time</att>
+                <att name="units">yyyy-MM-dd'T'HH:mm:ss'Z'</att>
+                <att name="time_precision">1970-01-01T00:00:00Z</att>
+            </addAttributes>
         </dataVariable>
+
         <dataVariable>
             <sourceName>latitude</sourceName>
             <destinationName>latitude</destinationName>
             <dataType>double</dataType>
-            <units>degrees_north</units>
+            <addAttributes>
+                <att name="standard_name">latitude</att>
+                <att name="units">degrees_north</att>
+                <att name="axis">Y</att>
+            </addAttributes>
         </dataVariable>
+
         <dataVariable>
             <sourceName>longitude</sourceName>
             <destinationName>longitude</destinationName>
             <dataType>double</dataType>
-            <units>degrees_east</units>
+            <addAttributes>
+                <att name="standard_name">longitude</att>
+                <att name="units">degrees_east</att>
+                <att name="axis">X</att>
+            </addAttributes>
         </dataVariable>
+
         <dataVariable>
             <sourceName>sea_surface_temperature</sourceName>
             <destinationName>sst</destinationName>
             <dataType>double</dataType>
-            <units>degree_C</units>
+            <addAttributes>
+                <att name="standard_name">sea_surface_temperature</att>
+                <att name="units">degree_C</att>
+            </addAttributes>
         </dataVariable>
+
+        <addAttributes>
+            <att name="title">CNMOC Buoy Telemetry</att>
+            <att name="institution">CNMOC</att>
+            <att name="cdm_data_type">TimeSeries</att>
+            <att name="featureType">TimeSeries</att>
+            <att name="Conventions">COARDS, CF-1.6, ACDD-1.3</att>
+        </addAttributes>
     </dataset>
 </erddapDatasets>
