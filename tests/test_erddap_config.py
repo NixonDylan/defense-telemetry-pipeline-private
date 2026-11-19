@@ -1,82 +1,168 @@
-import os
+from pathlib import Path
+import re
 import xml.etree.ElementTree as ET
 import pytest
 
-# Target the exact configuration file sitting in your root directory
-DATASETS_XML_PATH = os.path.join(os.path.dirname(__file__), "..", "datasets.xml")
+REPO_ROOT = Path(__file__).resolve().parent.parent
+DATASETS_XML_PATH = REPO_ROOT / "datasets.xml"
+INIT_SQL_PATH = REPO_ROOT / "init.sql"
 
-def test_datasets_xml_exists():
-    """Verify that the datasets.xml manifest file is present in the repository."""
-    assert os.path.exists(DATASETS_XML_PATH), "datasets.xml is missing from the repository root!"
 
-def test_datasets_xml_well_formed():
-    """Parse the XML document to ensure there are no syntax or structural markup errors."""
+def _get_variable_units(var: ET.Element) -> str | None:
+    """Return units from either a direct <units> child or <addAttributes><att name='units'>."""
+    direct_units = var.find("units")
+    if direct_units is not None and direct_units.text:
+        return direct_units.text.strip()
+
+    for att in var.findall("./addAttributes/att"):
+        if att.attrib.get("name") == "units" and att.text:
+            return att.text.strip()
+
+    return None
+
+
+def _get_dataset_global_attributes(dataset: ET.Element) -> dict[str, str]:
+    """Extract dataset-level <addAttributes><att name='...'> values."""
+    attrs: dict[str, str] = {}
+    for att in dataset.findall("./addAttributes/att"):
+        name = att.attrib.get("name")
+        if name and att.text is not None:
+            attrs[name] = att.text.strip()
+    return attrs
+
+
+@pytest.fixture(scope="module")
+def datasets_root() -> ET.Element:
+    assert DATASETS_XML_PATH.is_file(), f"datasets.xml not found at {DATASETS_XML_PATH}"
     try:
         tree = ET.parse(DATASETS_XML_PATH)
-        root = tree.getroot()
-        assert root is not None, "The XML document root element is empty."
-        assert root.tag == "erddapDatasets", f"Expected root tag 'erddapDatasets', but found '{root.tag}'."
-    except ET.ParseError as error:
-        pytest.fail(f"Malformed XML syntax detected in datasets.xml: {str(error)}")
-def test_verify_dataset_database_parameters():
-    """Scan the file to check that any declared database datasets contain vital connection properties."""
-    if not os.path.exists(DATASETS_XML_PATH):
-        return
+    except ET.ParseError as exc:
+        pytest.fail(f"Malformed XML syntax in datasets.xml: {exc}")
 
-    tree = ET.parse(DATASETS_XML_PATH)
     root = tree.getroot()
-    
-    datasets = root.findall("dataset")
-    
+    assert root.tag == "erddapDatasets", (
+        f"Expected root tag 'erddapDatasets', got '{root.tag}'."
+    )
+    return root
+
+
+def test_verify_dataset_database_parameters(datasets_root: ET.Element) -> None:
+    """Verify database connection fields for EDDTableFromDatabase datasets."""
+    datasets = datasets_root.findall("dataset")
+    assert datasets, "No <dataset> entries found in datasets.xml."
+
     for dataset in datasets:
         dataset_id = dataset.attrib.get("datasetID", "unknown_id")
-        dataset_type = dataset.attrib.get("type", "unknown_type")
-        
-        # Correctly evaluate database connection parameters according to ERDDAP specifications
-        if dataset_type == "EDDTableFromDatabase":
-            connection_url = dataset.find(".//connectionURL")
-            assert connection_url is not None, f"Dataset '{dataset_id}' is missing a connectionURL configuration tag!"
-            assert "postgresql" in connection_url.text.lower(), f"Dataset '{dataset_id}' connectionURL does not point to a PostgreSQL bridge."
-def test_verify_cf_1_6_metadata_compliance():
-    """Audit the datasets.xml attributes to guarantee strict CF-1.6 metadata compatibility."""
-    if not os.path.exists(DATASETS_XML_PATH):
-        return
+        if dataset.attrib.get("type") != "EDDTableFromDatabase":
+            continue
 
-    tree = ET.parse(DATASETS_XML_PATH)
-    root = tree.getroot()
-    
-    datasets = root.findall("dataset")
-    
-    # CF-1.6 mandates specific standard coordinate identification metrics
-    required_coordinates = {
-        "time": {"units": "yyyy-MM-dd'T'HH:mm:ss'Z'", "data_type": "String"},
-        "latitude": {"units": "degrees_north", "data_type": "double"},
-        "longitude": {"units": "degrees_east", "data_type": "double"}
+        driver = dataset.find("driverClassName")
+        url = dataset.find("connectionURL")
+        user = dataset.find("dbUser")
+        password = dataset.find("dbPassword")
+        select_str = dataset.find("selectString")
+
+        assert driver is not None and driver.text and driver.text.strip(), (
+            f"Dataset '{dataset_id}' missing driverClassName."
+        )
+        assert url is not None and url.text and url.text.strip(), (
+            f"Dataset '{dataset_id}' missing connectionURL."
+        )
+        assert url.text.strip().startswith("jdbc:postgresql://"), (
+            f"Dataset '{dataset_id}' connectionURL must start with 'jdbc:postgresql://'."
+        )
+        assert user is not None and user.text and user.text.strip(), (
+            f"Dataset '{dataset_id}' missing dbUser."
+        )
+        assert password is not None and password.text is not None, (
+            f"Dataset '{dataset_id}' missing dbPassword."
+        )
+        assert select_str is not None and select_str.text and select_str.text.strip(), (
+            f"Dataset '{dataset_id}' missing selectString."
+        )
+
+
+def test_verify_cf_1_6_metadata_compliance(datasets_root: ET.Element) -> None:
+    """Verify mandatory coordinate variables, units, data types, and CF-1.6 conventions."""
+    required_coordinates: dict[str, tuple[str, str]] = {
+        "time": ("String", "yyyy-MM-dd'T'HH:mm:ss'Z'"),
+        "latitude": ("double", "degrees_north"),
+        "longitude": ("double", "degrees_east"),
     }
 
-    for dataset in datasets:
+    for dataset in datasets_root.findall("dataset"):
         dataset_id = dataset.attrib.get("datasetID", "unknown_id")
-        data_variables = dataset.findall("dataVariable")
-        
-        found_coords = []
-        
-        for var in data_variables:
-            dest_name = var.find("destinationName").text if var.find("destinationName") is not None else None
-            data_type = var.find("dataType").text if var.find("dataType") is not None else None
-            units = var.find("units").text if var.find("units") is not None else None
-            
-            # Check coordinate dimensions for structural alignment
-            if dest_name in required_coordinates:
-                found_coords.append(dest_name)
-                expected = required_coordinates[dest_name]
-                
-                # Assertions to prevent compliance failure
-                assert data_type == expected["data_type"], \
-                    f"CF Failure: Dataset '{dataset_id}' variable '{dest_name}' must be type '{expected['data_type']}'"
-                assert units == expected["units"], \
-                    f"CF Failure: Dataset '{dataset_id}' variable '{dest_name}' must use units '{expected['units']}'"
+        global_attrs = _get_dataset_global_attributes(dataset)
+        conventions = global_attrs.get("Conventions", "")
+        assert "CF-1.6" in conventions, (
+            f"Dataset '{dataset_id}' Conventions '{conventions}' does not declare CF-1.6."
+        )
 
-        # CF-1.6 requires all spatial-temporal trajectories to contain full coordinate records
-        for coord in required_coordinates.keys():
-            assert coord in found_coords, \
-                f"CF Failure: Dataset '{dataset_id}' is missing the mandatory '{coord}' coordinate mapping block!"
+        found_coords: set[str] = set()
+        for var in dataset.findall("dataVariable"):
+            dest_el = var.find("destinationName")
+            dtype_el = var.find("dataType")
+            dest_name = dest_el.text.strip() if dest_el is not None and dest_el.text else None
+            data_type = dtype_el.text.strip() if dtype_el is not None and dtype_el.text else None
+            units = _get_variable_units(var)
+
+            if dest_name in required_coordinates:
+                found_coords.add(dest_name)
+                expected_type, expected_units = required_coordinates[dest_name]
+                assert data_type == expected_type, (
+                    f"Dataset '{dataset_id}' variable '{dest_name}' expected type "
+                    f"'{expected_type}', got '{data_type}'."
+                )
+                assert units == expected_units, (
+                    f"Dataset '{dataset_id}' variable '{dest_name}' expected units "
+                    f"'{expected_units}', got '{units}'."
+                )
+
+        missing_coords = set(required_coordinates) - found_coords
+        assert not missing_coords, (
+            f"Dataset '{dataset_id}' missing required coordinates: {sorted(missing_coords)}."
+        )
+
+
+def test_datasets_align_with_init_sql_schema(datasets_root: ET.Element) -> None:
+    """Ensure SQL queries in datasets.xml reference telemetry_ingest and expected columns."""
+    assert INIT_SQL_PATH.is_file(), f"init.sql not found at {INIT_SQL_PATH}"
+    sql_text = INIT_SQL_PATH.read_text(encoding="utf-8")
+
+    assert re.search(r"CREATE\s+TABLE\s+telemetry_ingest\b", sql_text, re.IGNORECASE), (
+        "init.sql is missing CREATE TABLE telemetry_ingest."
+    )
+
+    for dataset in datasets_root.findall("dataset"):
+        if dataset.attrib.get("type") != "EDDTableFromDatabase":
+            continue
+
+        dataset_id = dataset.attrib.get("datasetID", "unknown_id")
+        select_el = dataset.find("selectString")
+        assert select_el is not None and select_el.text
+
+        query = select_el.text
+        assert re.search(r"\bFROM\s+telemetry_ingest\b", query, re.IGNORECASE), (
+            f"Dataset '{dataset_id}' selectString must query FROM telemetry_ingest."
+        )
+        assert not re.search(r"\bFROM\s+telemetry_table\b", query, re.IGNORECASE), (
+            f"Dataset '{dataset_id}' selectString still references dropped telemetry_table."
+        )
+
+        # Verify top-level columns referenced in query exist in telemetry_ingest
+        for col in ("device_id", "timestamp", "metrics"):
+            if re.search(rf"\b{col}\b", query, re.IGNORECASE):
+                assert re.search(rf"\b{col}\b", sql_text, re.IGNORECASE), (
+                    f"Dataset '{dataset_id}' references column '{col}' not found in init.sql."
+                )
+
+        # Ensure every dataVariable sourceName is present in selectString
+        for var in dataset.findall("dataVariable"):
+            src_el = var.find("sourceName")
+            assert src_el is not None and src_el.text and src_el.text.strip(), (
+                f"Dataset '{dataset_id}' has a dataVariable missing sourceName."
+            )
+            source_name = src_el.text.strip()
+            assert re.search(rf"\b{re.escape(source_name)}\b", query), (
+                f"Dataset '{dataset_id}' sourceName '{source_name}' not found in selectString."
+            )
