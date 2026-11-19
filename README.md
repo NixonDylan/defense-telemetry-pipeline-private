@@ -1,6 +1,6 @@
 # Secure Defense Telemetry Ingestion Pipeline
 
-A hardened, asynchronous telemetry ingestion gateway built with **FastAPI**, **Pydantic v2**, **Polars**, **asyncpg**, and **PostgreSQL/PostGIS**. Designed for zero-trust edge-to-cloud ingestion, strict runtime schema enforcement, Dead Letter Queue (DLQ) quarantine, and automated DevSecOps CI/CD validation.
+A hardened, asynchronous telemetry ingestion gateway built with **FastAPI**, **Pydantic v2**, **Polars**, **asyncpg**, and **PostgreSQL/PostGIS**, paired with **Redis 7** and optional **ERDDAP** (`EDDTableFromDatabase`) integration. Designed for zero-trust edge-to-cloud ingestion, strict runtime schema enforcement, Dead Letter Queue (DLQ) quarantine, CF-1.6 metadata compliance, and automated DevSecOps CI/CD validation.
 
 ---
 
@@ -14,6 +14,7 @@ flowchart LR
     C -->|Malformed Payload<br/>422 REJECTED| E[Global Exception<br/>Middleware]
     D --> F[(PostgreSQL / PostGIS<br/>telemetry_ingest)]
     E --> G[(PostgreSQL / PostGIS<br/>telemetry_dlq)]
+    F --> I[ERDDAP tabledap<br/>Optional Integration Profile]
     H[Redis 7] -.->|Broker / Rate-Limit Buffer| B
 ```
 
