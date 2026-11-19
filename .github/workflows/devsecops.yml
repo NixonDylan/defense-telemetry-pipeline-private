@@ -16,6 +16,15 @@ jobs:
     name: Code Quality & Combined Test Suites
     runs-on: ubuntu-latest
 
+    env:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD || 'ci_ephemeral_runner_pass_2026' }}
+      POSTGRES_DB: telemetry_db
+      POSTGRES_HOST: localhost
+      POSTGRES_PORT: 5432
+      JWT_SECRET_KEY: ${{ secrets.JWT_SECRET_KEY || 'ci_ephemeral_runner_jwt_secret_2026' }}
+      PYTHONPATH: .
+
     services:
       redis:
         image: redis:7-alpine
@@ -25,8 +34,7 @@ jobs:
         image: postgres:15-alpine
         env:
           POSTGRES_USER: postgres
-          # Transient container password for the disposable cloud pipeline runner environment
-          POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
+          POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD || 'ci_ephemeral_runner_pass_2026' }}
           POSTGRES_DB: telemetry_db
         ports:
           - 5432:5432
@@ -66,16 +74,10 @@ jobs:
       - name: Execute Original Pipeline Test Suite
         env:
           CELERY_BROKER_URL: redis://localhost:6379/0
-          DATABASE_URL: postgresql://postgres:pipeline_transient_pass@localhost:5432/telemetry_db
         run: pytest test_pipeline.py -v
 
       - name: Execute ERDDAP Metadata Configuration Validation
         run: pytest tests/test_erddap_config.py -v
 
-      # Fixed by adding PYTHONPATH to register your app module in the cloud runner environment
       - name: Execute New API Gateway Unit Tests
-        env:
-          POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
-          JWT_SECRET_KEY: ${{ secrets.JWT_SECRET_KEY }}
-          PYTHONPATH: .
         run: pytest tests/test_gateway.py -v
