@@ -50,5 +50,19 @@ services:
     volumes:
       - .:/app
 
+  erddap:
+    image: erddap/erddap:latest
+    container_name: telemetry_erddap
+    profiles: ["integration"]
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./datasets.xml:/usr/local/tomcat/content/erddap/datasets.xml:ro
+      - erddap_data:/erddapData
+    depends_on:
+      db:
+        condition: service_healthy
+
 volumes:
   pgdata:
+  erddap_data:
