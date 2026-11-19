@@ -11,9 +11,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libpq-dev \
     && rm -rf /var/lib/apt/lists/*
 
+RUN python -m venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+
 COPY requirements.txt .
-# Install dependencies into a clean target directory
-RUN pip install --no-cache-dir --prefix=/install -r requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
 
 # --- Stage 2: Final Runtime ---
 FROM python:3.12-slim AS runtime
@@ -22,7 +24,7 @@ WORKDIR /app
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    PATH=/home/appuser/.local/bin:$PATH
+    PATH="/opt/venv/bin:$PATH"
 
 RUN groupadd -g 10001 appgroup && \
     useradd -u 10001 -g appgroup -m -s /bin/bash appuser
@@ -31,10 +33,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libpq5 \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy installed site-packages directly from the builder's prefix into appuser's local path
-COPY --from=builder --chown=appuser:appgroup /install /home/appuser/.local
-
-# Copy application source code
+COPY --from=builder --chown=appuser:appgroup /opt/venv /opt/venv
 COPY --chown=appuser:appgroup . .
 
 USER appuser
