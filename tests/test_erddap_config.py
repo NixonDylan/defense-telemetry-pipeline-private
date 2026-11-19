@@ -8,6 +8,11 @@ DATASETS_XML_PATH = REPO_ROOT / "datasets.xml"
 INIT_SQL_PATH = REPO_ROOT / "init.sql"
 
 
+def _strip_sql_comments(sql: str) -> str:
+    """Remove single-line SQL comments before running regex checks."""
+    return "\n".join(line.split("--", maxsplit=1)[0] for line in sql.splitlines())
+
+
 def _get_variable_units(var: ET.Element) -> str | None:
     """Return units from either a direct <units> child or <addAttributes><att name='units'>."""
     direct_units = var.find("units")
@@ -47,7 +52,7 @@ def datasets_root() -> ET.Element:
 
 
 def test_verify_dataset_database_parameters(datasets_root: ET.Element) -> None:
-    """Verify database connection fields for EDDTableFromDatabase datasets."""
+    """Verify database connection fields and ordering for EDDTableFromDatabase datasets."""
     datasets = datasets_root.findall("dataset")
     assert datasets, "No <dataset> entries found in datasets.xml."
 
@@ -61,6 +66,7 @@ def test_verify_dataset_database_parameters(datasets_root: ET.Element) -> None:
         user = dataset.find("dbUser")
         password = dataset.find("dbPassword")
         select_str = dataset.find("selectString")
+        order_by = dataset.find("orderByString")
 
         assert driver is not None and driver.text and driver.text.strip(), (
             f"Dataset '{dataset_id}' missing driverClassName."
@@ -79,6 +85,9 @@ def test_verify_dataset_database_parameters(datasets_root: ET.Element) -> None:
         )
         assert select_str is not None and select_str.text and select_str.text.strip(), (
             f"Dataset '{dataset_id}' missing selectString."
+        )
+        assert order_by is not None and order_by.text and order_by.text.strip(), (
+            f"Dataset '{dataset_id}' missing orderByString."
         )
 
 
@@ -127,7 +136,7 @@ def test_verify_cf_1_6_metadata_compliance(datasets_root: ET.Element) -> None:
 def test_datasets_align_with_init_sql_schema(datasets_root: ET.Element) -> None:
     """Ensure SQL queries in datasets.xml reference telemetry_ingest and expected columns."""
     assert INIT_SQL_PATH.is_file(), f"init.sql not found at {INIT_SQL_PATH}"
-    sql_text = INIT_SQL_PATH.read_text(encoding="utf-8")
+    sql_text = _strip_sql_comments(INIT_SQL_PATH.read_text(encoding="utf-8"))
 
     assert re.search(r"CREATE\s+TABLE\s+telemetry_ingest\b", sql_text, re.IGNORECASE), (
         "init.sql is missing CREATE TABLE telemetry_ingest."
@@ -141,7 +150,7 @@ def test_datasets_align_with_init_sql_schema(datasets_root: ET.Element) -> None:
         select_el = dataset.find("selectString")
         assert select_el is not None and select_el.text
 
-        query = select_el.text
+        query = _strip_sql_comments(select_el.text)
         assert re.search(r"\bFROM\s+telemetry_ingest\b", query, re.IGNORECASE), (
             f"Dataset '{dataset_id}' selectString must query FROM telemetry_ingest."
         )
