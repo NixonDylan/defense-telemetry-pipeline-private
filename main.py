@@ -1,12 +1,13 @@
-import os
 import polars as pl
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from jose import jwt
 from fastapi.testclient import TestClient
+
+from app.config import settings
 from app.main import api_gateway
 
 # --- Environment Configuration Matrices ---
-JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY", "super_secret_crypto_seal_key_change_me_in_prod")
+JWT_SECRET_KEY = settings.JWT_SECRET_KEY
 
 
 # =====================================================================
@@ -35,11 +36,11 @@ def process_kafka_batch_with_polars(raw_messages: list):
     """
     if not raw_messages:
         empty_valid = LegacyCompatibleDataFrame(schema={
-            "buoy_id": pl.String, "timestamp": pl.String, 
+            "buoy_id": pl.String, "timestamp": pl.String,
             "latitude": pl.Float64, "longitude": pl.Float64, "sea_surface_temperature": pl.Float64
         })
         empty_dlq = LegacyCompatibleDataFrame(schema={
-            "buoy_id": pl.String, "timestamp": pl.String, 
+            "buoy_id": pl.String, "timestamp": pl.String,
             "latitude": pl.Float64, "longitude": pl.Float64, "sea_surface_temperature": pl.Float64,
             "error": pl.String
         })
@@ -73,24 +74,25 @@ def generate_production_token() -> str:
     payload = {
         "sub": "central_pipeline_worker",
         "role": "edge_device",
-        "exp": datetime.utcnow() + timedelta(minutes=5)
+        "exp": datetime.now(timezone.utc) + timedelta(minutes=5)
     }
-    return jwt.encode(payload, JWT_SECRET_KEY, algorithm="HS256")
+    return jwt.encode(payload, JWT_SECRET_KEY, algorithm=settings.JWT_ALGORITHM)
+
 
 def push_telemetry_to_gateway(device_id: str, data_type: str, metrics: dict) -> bool:
     """Pushes a structured telemetry model in-memory via FastAPI's TestClient."""
     token = generate_production_token()
     headers = {"Authorization": f"Bearer {token}"}
-    
+
     payload = {
         "device_id": device_id,
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
         "data_type": data_type,
         "metrics": metrics,
         "sensor_status": "OPERATIONAL",
         "classification_level": "UNCLASSIFIED"
     }
-    
+
     try:
         client = TestClient(api_gateway)
         response = client.post("/api/v1/telemetry/submit", json=payload, headers=headers)
