@@ -3,14 +3,14 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    POSTGRES_USER: str = "postgres"
-    POSTGRES_DB: str = "telemetry_prod"
+    POSTGRES_USER: str = "admin"
+    POSTGRES_DB: str = "telemetry"
     POSTGRES_HOST: str = "localhost"
-    POSTGRES_PORT: str = "5432"
+    POSTGRES_PORT: int = 5432
 
-    # Required secrets (must be injected via environment variables)
+    # Required secrets (must be injected via environment variables or .env)
     POSTGRES_PASSWORD: str = Field(..., min_length=8)
-    JWT_SECRET_KEY: str = Field(..., min_length=16)
+    JWT_SECRET_KEY: str = Field(..., min_length=32)
 
     JWT_ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
