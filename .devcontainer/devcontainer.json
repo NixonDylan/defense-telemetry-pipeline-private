@@ -10,5 +10,5 @@
             ]
         }
     },
-    "postCreateCommand": "python3 -m pip install --upgrade pip && python3 -m pip install polars \"psycopg[pool]\" pydantic pydantic-settings celery redis pytest pytest-asyncio httpx \"python-jose[cryptography]\""
+    "postCreateCommand": "[ -f .env ] || cp .env.example .env && python3 -m pip install --upgrade pip && python3 -m pip install -r requirements.txt"
 }
