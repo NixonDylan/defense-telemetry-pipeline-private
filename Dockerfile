@@ -27,17 +27,17 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PATH="/opt/venv/bin:$PATH"
 
 RUN groupadd -g 10001 appgroup && \
-    useradd -u 10001 -g appgroup -m -s /bin/bash appuser
+    useradd -u 10001 -g appgroup -m -s /usr/sbin/nologin appuser
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libpq5 \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder --chown=appuser:appgroup /opt/venv /opt/venv
-COPY --chown=appuser:appgroup . .
+COPY --chown=appuser:appgroup app ./app
 
 USER appuser
 
 EXPOSE 8000
 
-CMD ["uvicorn", "main:api_gateway", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "app.main:api_gateway", "--host", "0.0.0.0", "--port", "8000"]
