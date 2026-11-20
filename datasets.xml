@@ -10,7 +10,7 @@
         <selectString>
             SELECT
                 device_id,
-                EXTRACT(EPOCH FROM (timestamp AT TIME ZONE 'UTC'))::double precision AS time_epoch,
+                to_char(timestamp AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS timestamp_iso,
                 (metrics->>'latitude')::double precision AS latitude,
                 (metrics->>'longitude')::double precision AS longitude,
                 (metrics->>'sea_surface_temperature')::double precision AS sea_surface_temperature
@@ -19,7 +19,7 @@
               AND jsonb_exists(metrics, 'longitude')
               AND jsonb_exists(metrics, 'sea_surface_temperature')
         </selectString>
-        <orderByString>time_epoch desc</orderByString>
+        <orderByString>timestamp_iso desc</orderByString>
 
         <dataVariable>
             <sourceName>device_id</sourceName>
@@ -32,12 +32,13 @@
         </dataVariable>
 
         <dataVariable>
-            <sourceName>time_epoch</sourceName>
+            <sourceName>timestamp_iso</sourceName>
             <destinationName>time</destinationName>
-            <dataType>double</dataType>
+            <dataType>String</dataType>
             <addAttributes>
                 <att name="standard_name">time</att>
-                <att name="units">seconds since 1970-01-01T00:00:00Z</att>
+                <att name="units">yyyy-MM-dd'T'HH:mm:ss'Z'</att>
+                <att name="time_precision">1970-01-01T00:00:00Z</att>
             </addAttributes>
         </dataVariable>
 
