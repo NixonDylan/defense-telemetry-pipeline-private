@@ -2,12 +2,12 @@
     <dataset type="EDDTableFromDatabase" datasetID="cnmoc_buoy_telemetry" active="true">
         <reloadEveryNMinutes>5</reloadEveryNMinutes>
 
-        <driverClassName>org.postgresql.Driver</driverClassName>
+        <driverName>org.postgresql.Driver</driverName>
         <connectionURL>jdbc:postgresql://db:5432/telemetry_prod</connectionURL>
-        <dbUser>your_postgres_user</dbUser>
-        <dbPassword>your_postgres_password</dbPassword>
+        <userName>your_postgres_user</userName>
+        <password>your_postgres_password</password>
 
-        <selectString>
+        <sqlStatement>
             SELECT
                 device_id,
                 to_char(timestamp AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS timestamp_iso,
@@ -18,8 +18,8 @@
             WHERE jsonb_exists(metrics, 'latitude')
               AND jsonb_exists(metrics, 'longitude')
               AND jsonb_exists(metrics, 'sea_surface_temperature')
-        </selectString>
-        <orderByString>timestamp_iso desc</orderByString>
+        </sqlStatement>
+        <orderBy>timestamp_iso desc</orderBy>
 
         <dataVariable>
             <sourceName>device_id</sourceName>
@@ -80,6 +80,7 @@
             <att name="cdm_data_type">TimeSeries</att>
             <att name="featureType">TimeSeries</att>
             <att name="Conventions">COARDS, CF-1.6, ACDD-1.3</att>
+            <att name="sourceUrl">jdbc:postgresql://db:5432/telemetry_prod</att>
         </addAttributes>
     </dataset>
 </erddapDatasets>
