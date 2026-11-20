@@ -57,7 +57,7 @@ services:
     ports:
       - "8080:8080"
     volumes:
-      - ./datasets.xml:/usr/local/tomcat/content/erddap/datasets.xml:ro
+      - ./datasets.xml:/usr/local/tomcat/content/erddap/datasets.xml
       - erddap_data:/erddapData
     depends_on:
       db:
