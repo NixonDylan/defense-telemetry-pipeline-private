@@ -2,6 +2,7 @@
     <dataset type="EDDTableFromDatabase" datasetID="cnmoc_buoy_telemetry" active="true">
         <reloadEveryNMinutes>5</reloadEveryNMinutes>
         <sourceUrl>jdbc:postgresql://db:5432/telemetry_prod</sourceUrl>
+        <tableName>telemetry_ingest</tableName>
 
         <driverName>org.postgresql.Driver</driverName>
         <connectionURL>jdbc:postgresql://db:5432/telemetry_prod</connectionURL>
