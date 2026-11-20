@@ -3,7 +3,7 @@
         <reloadEveryNMinutes>5</reloadEveryNMinutes>
 
         <driverClassName>org.postgresql.Driver</driverClassName>
-        <connectionURL>jdbc:postgresql://db:5432/telemetry_ingest</connectionURL>
+        <connectionURL>jdbc:postgresql://db:5432/telemetry_prod</connectionURL>
         <dbUser>your_postgres_user</dbUser>
         <dbPassword>your_postgres_password</dbPassword>
 
